@@ -1,0 +1,44 @@
+# ---------- Data ----------
+data:
+  processed_dir: "/Users/suganthi/mediwatch/data/processed"
+  x_train: "X_train.parquet"
+  y_train: "y_train.parquet"
+  x_valid: "X_valid.parquet"
+  y_valid: "y_valid.parquet"
+  x_test:  "X_test.parquet"
+  y_test:  "y_test.parquet"
+  target_col: "readmit_30d"
+
+# ---------- MLflow ----------
+mlflow:
+  experiment: "MediWatch-Readmit"
+  # If you want to hard-wire it, uncomment next line; otherwise set env var:
+  # tracking_uri: "file:./mlruns"
+
+# ---------- Output paths ----------
+output:
+  reports_dir: "reports"
+  artifacts_dir: "artifacts"
+  # composite plots file name for quick reference (optional)
+  curves_name: "curves.png"
+
+# ---------- Baselines ----------
+baseline:
+  lr:
+    max_iter: 200
+    C: 1.0
+  rf:
+    n_estimators: 400
+    max_depth: 0   # 0 => None
+
+# ---------- Advanced (HGB, your main model) ----------
+hgb:
+  learning_rate: 0.05
+  n_estimators: 500
+  max_depth: null     # None equivalent
+  l2_regularization: 0.0
+
+# ---------- Threshold tuning (optional, used later) ----------
+threshold:
+  metric: "f1"        # or "recall", "precision", "balanced_f1"
+  grid: [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9]

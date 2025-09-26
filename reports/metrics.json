@@ -1,0 +1,7 @@
+{
+  "backend": "sklearn.HistGradientBoosting",
+  "auroc": 0.6731576665516767,
+  "prauc": 0.22951721552067947,
+  "brier": 0.09652329494227622,
+  "pos_rate_valid": 0.11461818181818181
+}

@@ -1,0 +1,10 @@
+django
+djangorestframework
+django-environ
+gunicorn
+joblib
+pandas
+numpy
+pyarrow
+scikit-learn
+mlflow
