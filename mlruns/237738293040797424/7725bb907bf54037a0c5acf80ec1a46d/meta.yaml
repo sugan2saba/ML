@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/suganthi/mediwatch/mlruns/237738293040797424/7725bb907bf54037a0c5acf80ec1a46d/artifacts
+end_time: 1758696805355
+entry_point_name: ''
+experiment_id: '237738293040797424'
+lifecycle_stage: active
+run_id: 7725bb907bf54037a0c5acf80ec1a46d
+run_name: hgb_lr005
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1758696803085
+status: 3
+tags: []
+user_id: suganthi
