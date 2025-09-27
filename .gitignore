@@ -17,7 +17,6 @@ models/
 *.pt
 *.parquet
 *.csv
-
 # IDE / OS
 .DS_Store
 .idea/
