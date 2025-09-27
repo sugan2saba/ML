@@ -9,3 +9,4 @@ pyarrow
 scikit-learn
 mlflow
 whitenoise
+boto3
