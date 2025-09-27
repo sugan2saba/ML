@@ -47,7 +47,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile      # change if your Dockerfile is elsewhere
+          file: ./docker/Dockerfile      # change if your Dockerfile is elsewhere
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
