@@ -7,10 +7,8 @@ env/
 *.egg-info/
 node_modules/
 data/
-artifacts/
 models/
 mlruns/
-*.joblib
 *.h5
 *.pt
 *.parquet
@@ -18,3 +16,5 @@ mlruns/
 *.zip
 *.tar.gz
 .DS_Store
+artifacts/*
+!artifacts/*.joblib

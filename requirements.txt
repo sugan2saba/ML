@@ -8,3 +8,4 @@ numpy
 pyarrow
 scikit-learn
 mlflow
+whitenoise
