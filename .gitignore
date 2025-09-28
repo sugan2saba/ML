@@ -10,8 +10,9 @@ node_modules/
 
 # Data / Models / Artifacts
 data/
+*.joblib
 !artifacts/
-!artifacts/*.joblib
+!artifacts/model_pipeline.joblib
 models/
 *.h5
 *.pt
