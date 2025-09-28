@@ -7,7 +7,7 @@ env/
 
 # Node
 node_modules/
-
+mlruns/
 # Data / Models / Artifacts
 data/
 *.joblib
