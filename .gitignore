@@ -13,7 +13,6 @@ data/
 !artifacts/
 !artifacts/*.joblib
 models/
-*.joblib
 *.h5
 *.pt
 *.parquet
