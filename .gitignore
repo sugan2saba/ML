@@ -45,3 +45,4 @@ notebooks/.ipynb_checkpoints/
 # Node/npm (if any)
 node_modules/
 mlflow.db
+api/db.sqlite3
