@@ -1,12 +1,28 @@
+# Core framework
 django
 djangorestframework
 django-environ
-gunicorn
-joblib
-pandas
-numpy
-pyarrow
-scikit-learn
-mlflow
 whitenoise
+gunicorn
+
+# Data science
+numpy
+pandas
+scikit-learn
+joblib
+pyarrow
+
+# MLflow & MLOps
+mlflow
 boto3
+evidently>=0.4,<0.5
+optuna
+ray[tune]   # for HPO
+
+# Plotting / reports
+matplotlib
+seaborn
+
+# Dev / lint (optional, comment out if you don’t want them)
+black
+flake8

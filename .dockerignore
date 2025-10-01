@@ -1,20 +1,36 @@
+# VCS / meta
 .git
 .gitignore
+.gitattributes
+
+# Python junk & venvs
 __pycache__/
 *.py[cod]
+*.egg-info/
 .venv/
 env/
-*.egg-info/
-node_modules/
-data/
-models/
-mlruns/
-*.h5
-*.pt
-*.parquet
-*.csv
-*.zip
-*.tar.gz
+
+# IDE / OS junk
+.vscode/
+.idea/
 .DS_Store
+Thumbs.db
+
+# Big local directories not needed in the image
+data/
+mlruns/
+mlartifacts/
+logs/
+reports/
+notebooks/
+node_modules/
+
+# Don’t ship pre-built static; we run collectstatic in the image
+api/staticfiles/
+
+# Artifacts: ignore all, but ALLOW .joblib so we can COPY a model when baking
 artifacts/*
 !artifacts/*.joblib
+
+# Docs don’t need to be inside the image
+docs/

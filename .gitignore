@@ -1,25 +1,47 @@
-# Python
+# --- Python / build junk ---
 __pycache__/
 *.py[cod]
+*.so
+*.egg-info/
+*.whl
+build/
+dist/
+
+# --- Virtual envs / IDE / OS ---
 .venv/
 env/
-*.egg-info/
-
-# Node
-node_modules/
-mlruns/
-# Data / Models / Artifacts
-data/
-*.joblib
-!artifacts/
-!artifacts/model_pipeline.joblib
-models/
-*.h5
-*.pt
-*.parquet
-*.csv
-# IDE / OS
-.DS_Store
+.venv*/
 .idea/
 .vscode/
+.DS_Store
+Thumbs.db
+
+# --- Local env files ---
+.env
+api/.env
+
+# --- Data / artifacts / runs (big or reproducible elsewhere) ---
+data/
 mlruns/
+mlartifacts/
+reports/
+!reports/.gitkeep
+
+# Keep a tiny sample for CI drift (remove '!' if you don't want it in git)
+logs/*
+!logs/predictions.csv
+
+# Model artifacts (don’t commit; Docker will include them via .dockerignore rule)
+artifacts/*
+!artifacts/.gitkeep
+
+# Django collected static (built inside image)
+api/staticfiles/
+
+# Notebooks and checkpoints
+notebooks/.ipynb_checkpoints/
+*.ipynb
+
+# Node/npm (if any)
+node_modules/
+mlflow.db

@@ -1,2 +1,19 @@
 { "records": [ { "race": "Caucasian", "gender": "Female", "age": "[60-70)", "time_in_hospital": 3, "num_lab_procedures": 41, "num_medications": 12, "number_diagnoses": 8, "diabetesMed": "Yes", "A1Cresult": "None", "max_glu_serum": "None" }, { "race": "AfricanAmerican", "gender": "Male", "age": "[70-80)", "time_in_hospital": 7, "num_lab_procedures": 55, "num_medications": 20, "number_diagnoses": 9, "diabetesMed": "No", "A1Cresult": ">7", "max_glu_serum": "Norm" } ] }
 git remote add origin https://github.com/sugan2saba/ML.git
+
+export MLFLOW_TRACKING_URI=http://localhost:5000  # or file://
+mlflow ui  # in a separate shell if using file backend
+export MLFLOW_TRACKING_URI="file:./mlruns"
+
+mlflow server \
+  --backend-store-uri sqlite:///mlflow.db \
+  --artifacts-destination ./mlartifacts \
+  --host 127.0.0.1 --port 5000
+export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
+
+export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
+python -m scripts.promote_model --version 3 --stage Production
+
+python -m scripts.train_mlflow --experiment MediWatch-Readmit --run-name hgb_v1
+python -m scripts.train_mlflow --experiment MediWatch-Readmit --run-name hgb_lr01 --lr 0.1
+python -m scripts.train_mlflow --experiment MediWatch-Readmit --run-name hgb_lr005 --lr 0.05 --n-estimators 800
