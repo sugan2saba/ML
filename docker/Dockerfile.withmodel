@@ -1,52 +1,66 @@
 # docker/Dockerfile.withmodel
-# Build a Django API image with a model artifact baked in
-FROM python:3.10-slim AS base
+# Option 1: Django API image with model baked in
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+FROM python:3.10-slim
+
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    # Ensure absolute imports like "import api.something" resolve even when CWD=/app/api
+    PYTHONPATH=/app
+
+# Base OS deps for scientific stack + healthcheck
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential curl \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# System packages (curl for HEALTHCHECK; build-essential helps some wheels compile if needed)
-RUN apt-get update \
- && apt-get install -y --no-install-recommends build-essential curl \
- && rm -rf /var/lib/apt/lists/*
-
-# Install Python deps early to leverage layer caching
-COPY requirements.txt .
+# --- Python deps first (better layer caching)
+COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code (only what's needed to run the API)
+# --- Copy project code (as per your working Dockerfile)
 COPY api/ ./api/
+COPY mediwatch/ ./mediwatch/
 COPY configs/ ./configs/
 
-# Create runtime dirs
-RUN mkdir -p /logs /models
-
-# ---- Bake the model artifact into the image ----
-# Default expects a file at artifacts/model_pipeline.joblib (allowed by .dockerignore)
-# Override at build-time: --build-arg MODEL_SRC=artifacts/HGB_pipeline_<runid>.joblib
+# --- Bake a model artifact into the image
+# Default expects artifacts/model_pipeline.joblib in repo root (allowed by .dockerignore: !artifacts/*.joblib)
+# Override at build-time with: --build-arg MODEL_SRC=artifacts/HGB_pipeline_<runid>.joblib
 ARG MODEL_SRC=artifacts/model_pipeline.joblib
 COPY ${MODEL_SRC} /models/model_pipeline.joblib
 
-# Environment defaults (can be overridden at runtime with -e ...)
-ENV DJANGO_SETTINGS_MODULE=api.settings \
+# --- Runtime env (override with -e at `docker run` if needed)
+ENV DJANGO_SECRET_KEY=change-me \
+    DEBUG=0 \
+    THRESHOLD=0.5 \
+    DJANGO_SETTINGS_MODULE=mediwatch_api.settings \
     MODEL_SOURCE=local \
     MODEL_PATH=/models/model_pipeline.joblib \
     PRED_LOG_DIR=/logs \
     PORT=8000
 
-# Collect static files (WhiteNoise will serve them)
+# Create runtime dirs
+RUN mkdir -p /logs
+
+# Optional entrypoint (keep yours if you have DB migrations, etc.)
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# --- Collect static (from the folder that has manage.py)
 WORKDIR /app/api
 RUN python manage.py collectstatic --noinput
 
-# Back to app root for runtime
+# Back to app root
 WORKDIR /app
 EXPOSE 8000
 
-# Healthcheck hits Django /health endpoint
+# Healthcheck to /health
 HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
   CMD curl -fsS "http://127.0.0.1:${PORT}/health" || exit 1
 
-# Gunicorn entrypoint
-CMD ["gunicorn", "api.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2"]
+# Start server (uses your settings + baked model)
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["gunicorn", "mediwatch_api.wsgi:application", "-b", "0.0.0.0:8000", "--workers", "2", "--threads", "4", "--timeout", "60"]
