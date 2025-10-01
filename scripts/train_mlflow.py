@@ -14,6 +14,8 @@ import matplotlib
 matplotlib.use("Agg")  # safe for headless runs
 import matplotlib.pyplot as plt
 
+from dotenv import load_dotenv  # NEW: load .env
+
 import mlflow
 import mlflow.sklearn
 from mlflow.models import infer_signature
@@ -67,6 +69,7 @@ def log_curves(y_true, y_prob, tag: str, out_dir: Path):
 
     fig.tight_layout()
     out = out_dir / f"curves_{tag}.png"
+    out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=150); plt.close(fig)
     mlflow.log_artifact(str(out), artifact_path=f"plots/{tag}")
 
@@ -103,25 +106,39 @@ def maybe_register_and_stage(
 # Main training entrypoint
 # ----------------------------
 def main(args):
+    # --- Load .env so CLI runs pick up MLFLOW_TRACKING_URI and friends ---
+    repo_root = Path(__file__).resolve().parents[1]
+    load_dotenv(dotenv_path=repo_root / ".env")
+
     # --- MLflow wiring ---
-    # Default to local file store for basic tracking; recommend running MLflow server for registry.
-    if not os.environ.get("MLFLOW_TRACKING_URI") and not args.tracking_uri:
-        os.environ["MLFLOW_TRACKING_URI"] = "./mlruns"
-        print("[mlflow] No tracking URI set; defaulting to ./mlruns (file store)")
-        print("          NOTE: Model Registry requires a DB-backed server (e.g., SQLite).")
-        print("          Start one, e.g.:")
-        print("            mlflow server --host 127.0.0.1 --port 5001 \\")
-        print("              --backend-store-uri sqlite:///./.mlflow/mlruns.db \\")
-        print("              --default-artifact-root ./.mlflow/artifacts")
-
+    # Priority: CLI --tracking-uri > env MLFLOW_TRACKING_URI > fallback ./mlruns
     if args.tracking_uri:
-        mlflow.set_tracking_uri(args.tracking_uri)
+        mlflow.set_tracking_uri(args.tracking_uri.strip())
+        print(f"[mlflow] Using CLI tracking URI: {mlflow.get_tracking_uri()} (Option B)")
+    else:
+        env_uri = os.getenv("MLFLOW_TRACKING_URI", "").strip()
+        if env_uri:
+            mlflow.set_tracking_uri(env_uri)
+            print(f"[mlflow] Using env tracking URI: {env_uri} (Option B)")
+        else:
+            # Safe fallback for local runs (no server needed)
+            os.environ["MLFLOW_TRACKING_URI"] = "./mlruns"
+            mlflow.set_tracking_uri("./mlruns")
+            print("[mlflow] No tracking URI set; defaulting to ./mlruns (Option A)")
+            print("         NOTE: Model Registry requires a DB-backed server (e.g., SQLite).")
+            print("         Start one, e.g.:")
+            print("           mlflow server --host 127.0.0.1 --port 5000 \\")
+            print("             --backend-store-uri sqlite:///mlflow.db \\")
+            print("             --artifacts-destination ./mlartifacts")
 
-    # Experiment / model names (env overrides -> CLI -> defaults)
+    # Experiment / model names (env overrides -> CLI -> config -> defaults)
+    # Load config once here so it's available below too
+    cfg = load_config(args.config)
+
     experiment = (
         args.experiment
         or os.getenv("MLFLOW_EXPERIMENT")
-        or get_path(load_config(args.config), "mlflow", "experiment", default="MediWatch-Readmit")
+        or get_path(cfg, "mlflow", "experiment", default="MediWatch-Readmit")
     )
     mlflow.set_experiment(experiment)
 
@@ -136,7 +153,6 @@ def main(args):
     print("Registered Model:", model_name)
 
     # --- Config & validation ---
-    cfg = load_config(args.config)
     result = validate_config_and_data(cfg, strict_columns=False)
     for m in result.msgs:
         print("[validate]", m)
@@ -221,6 +237,14 @@ def main(args):
         joblib.dump(pipe, model_path)
         mlflow.log_artifact(str(model_path), artifact_path="artifacts")
 
+        # Also keep a stable filename for Docker Option-1 builds
+        stable_path = artifacts_dir / "model_pipeline.joblib"
+        try:
+            joblib.dump(pipe, stable_path)
+            print(f"[artifact] Also wrote {stable_path} (convenience copy)")
+        except Exception as e:
+            print(f"[artifact] WARNING: could not write stable artifact: {e!r}")
+
         # MLflow Model: add signature + input_example for safer serving/loader
         input_example = Xtr.head(3)
         try:
@@ -273,7 +297,7 @@ if __name__ == "__main__":
     parser.add_argument("--config", default="configs/train.yaml")
     parser.add_argument("--experiment", default=None, help="Override experiment name (else env or config).")
     parser.add_argument("--model-name", default=None, help="Override Registered Model name (else env or default).")
-    parser.add_argument("--tracking-uri", default=None, help="MLflow tracking URI (e.g., http://127.0.0.1:5001)")
+    parser.add_argument("--tracking-uri", default=None, help="MLflow tracking URI (e.g., http://127.0.0.1:5000)")
     parser.add_argument("--run-name", default="hgb_train")
     parser.add_argument("--lr", type=float, default=None)
     parser.add_argument("--n-estimators", type=int, default=None)

@@ -11,10 +11,22 @@
 
 ### Setup
 ```bash
-git clone https://github.com/<you>/mediwatch.git
+git clone https://github.com/sugan2saba/ML.git
 cd mediwatch
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+
+mkdir -p data/raw
+
+## 1. Data
+- Download dataset: [Kaggle Diabetes Dataset](https://www.kaggle.com/datasets/brandao/diabetes)
+
+- Place under `data/raw/diabetic_data.csv`
+
+## 2. Preprocessing
+```bash
+python -m scripts.make_splits
+# Creates data/processed/{train,valid,test}.csv
 
 # Train & Register
 python -m scripts.train_mlflow --model rf
