@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import argparse, json
 from pathlib import Path
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Optional
 
 import numpy as np
 import pandas as pd
@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 import mlflow
 import mlflow.sklearn
 from mlflow.models import infer_signature
+from mlflow.tracking import MlflowClient
 
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import (
@@ -104,6 +105,37 @@ def make_model(kind: str, args, cfg: dict):
 
 
 # ----------------------------
+# Registry helper
+# ----------------------------
+def maybe_register_and_stage(
+    run_id: str,
+    model_artifact_subpath: str,
+    model_name: str,
+    stage: Optional[str],
+    archive_existing: bool = True
+):
+    """
+    Register the logged model (artifact) under 'model_name' and optionally
+    transition the new version to a stage (Staging/Production).
+    """
+    model_uri = f"runs:/{run_id}/{model_artifact_subpath}"
+    result = mlflow.register_model(model_uri=model_uri, name=model_name)
+    print(f"[registry] Registered {model_name} as version {result.version}")
+
+    if stage:
+        client = MlflowClient()
+        client.transition_model_version_stage(
+            name=model_name,
+            version=result.version,
+            stage=stage,
+            archive_existing_versions=archive_existing
+        )
+        print(f"[registry] Transitioned {model_name} v{result.version} -> {stage}")
+
+    return result.version
+
+
+# ----------------------------
 # Main
 # ----------------------------
 def main(args):
@@ -111,25 +143,38 @@ def main(args):
     repo_root = Path(__file__).resolve().parents[1]
     load_dotenv(dotenv_path=repo_root / ".env")
 
+    # MLflow tracking URI priority: CLI > env > fallback
+    if args.tracking_uri:
+        mlflow.set_tracking_uri(args.tracking_uri.strip())
+        print(f"[mlflow] Using CLI tracking URI: {mlflow.get_tracking_uri()} (Option B)")
+    else:
+        env_uri = os.getenv("MLFLOW_TRACKING_URI", "").strip()
+        if env_uri:
+            mlflow.set_tracking_uri(env_uri)
+            print(f"[mlflow] Using env tracking URI: {env_uri} (Option B)")
+        else:
+            mlflow.set_tracking_uri("./mlruns")
+            print("[mlflow] No MLFLOW_TRACKING_URI set; defaulting to ./mlruns (Option A)")
+            print("         To enable Model Registry, start a server backed by a DB (e.g. SQLite).")
+
+    # Experiment selection
     if args.experiment:
         experiment = args.experiment
     else:
-        # allow config to supply experiment if not provided
         cfg_tmp = load_config(args.config)
         experiment = get_path(cfg_tmp, "mlflow", "experiment", default="MediWatch-Readmit")
-
-    env_uri = os.getenv("MLFLOW_TRACKING_URI", "").strip()
-    if env_uri:
-        mlflow.set_tracking_uri(env_uri)
-        print(f"[mlflow] Using tracking server: {env_uri} (Option B)")
-    else:
-        mlflow.set_tracking_uri("./mlruns")
-        print("[mlflow] No MLFLOW_TRACKING_URI set; defaulting to ./mlruns (Option A)")
-        print("         To enable Model Registry, start a server backed by a DB (e.g. SQLite).")
-
     mlflow.set_experiment(experiment)
+
+    # Registered model name selection (CLI > env > default)
+    model_name = (
+        args.model_name
+        or os.getenv("MLFLOW_MODEL_NAME")
+        or "MediWatchReadmit"
+    )
+
     print("Tracking URI:", mlflow.get_tracking_uri())
     print("Experiment:", experiment)
+    print("Registered Model (if --register):", model_name)
 
     # Load config & validate inputs
     cfg = load_config(args.config)
@@ -221,14 +266,45 @@ def main(args):
             input_example=input_example,
             signature=signature,
         )
+        print("Logged MLflow model under:", mlflow.get_artifact_uri())
 
-        print("Logged artifacts under:", mlflow.get_artifact_uri())
+        # Optional tags
+        mlflow.set_tags({
+            "dataset": get_path(cfg, "data", "processed_dir", default="data/processed"),
+            "target_col": get_path(cfg, "data", "target_col", default="readmit_30d"),
+            "selection_metric": "val_auroc",
+            "baseline_family": param_log.get("model")
+        })
+
+        # --- Registration + optional stage ---
+        if args.register:
+            try:
+                version = maybe_register_and_stage(
+                    run_id=run_id,
+                    model_artifact_subpath="model",
+                    model_name=model_name,
+                    stage=args.stage,
+                    archive_existing=True
+                )
+                print(json.dumps({
+                    "registered_model": model_name,
+                    "version": int(version),
+                    "stage": args.stage or "None"
+                }, indent=2))
+            except Exception as e:
+                print("[registry] Registration failed:", repr(e))
+                print("           If you're using a local file store (./mlruns),")
+                print("           start an MLflow server with a DB backend, then re-run with --register.")
+        else:
+            print("[registry] Skipped (no --register).")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="configs/train.yaml")
-    parser.add_argument("--experiment", default=None)
+    parser.add_argument("--experiment", default=None, help="Override experiment name (else env or config).")
+    parser.add_argument("--model-name", default=None, help="Registered Model name to use if --register is set.")
+    parser.add_argument("--tracking-uri", default=None, help="MLflow tracking URI (e.g., http://127.0.0.1:5000)")
     parser.add_argument("--run-name", default="baseline")
     parser.add_argument("--model", choices=["lr", "rf"], required=True)
     # LR
@@ -237,5 +313,11 @@ if __name__ == "__main__":
     # RF
     parser.add_argument("--n-estimators", type=int, default=None)
     parser.add_argument("--max-depth", type=int, default=None)
+
+    # Registry options (mirror train_mlflow.py)
+    parser.add_argument("--register", action="store_true", help="Register the logged model in MLflow Model Registry.")
+    parser.add_argument("--stage", choices=["Staging", "Production"], default=None,
+                        help="If set with --register, transition new version to this stage.")
+
     args = parser.parse_args()
     main(args)
