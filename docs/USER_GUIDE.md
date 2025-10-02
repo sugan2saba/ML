@@ -11,7 +11,7 @@ mkdir -p data/raw
 ## 2. Preprocessing
 ```bash
 python -m scripts.make_splits
-# Creates data/processed/{train,valid,test}.csv
+# Creates data/processed/{train,valid,test}parquet files 
 
 3. Training
 
@@ -42,26 +42,131 @@ python -m scripts.train_baseline_mlflow --model rf
 Advanced (HGB + Optuna HPO):
 python -m scripts.train_mlflow --model hgb
 All runs, metrics, and artifacts are logged to the MLflow server at http://127.0.0.1:5000.
+
+To register a model to MLFlow use paramerter --register
 Promoting a model
 After training, open MLflow UI → Models → MediWatchReadmit.
-Choose the best run → register → promote to Staging or Production.
+Choose the best run → register → promote to Staging or Production. examples
+
+python -m scripts.train_baseline_mlflow --model rf --register 
+python -m scripts.train_baseline_mlflow --model lr --max-iter 2000 --C 0.5 --register 
+python -m scripts.train_mlflow  --register --model-name HBO
+python -m scripts.train_mlflow --experiment MediWatch-Readmit --run-name hgb_v1 --register-name MediWatchReadmit
+
 
 
 4. Model Registry
 Promote best model:
-python -m scripts.promote_model --name MediWatchReadmit --stage Production
+export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
+python -m scripts.promote_model --model-name MediWatchReadmit --stage Production
+
+
 5. API
-Option 1: Run Docker image that includes the model artifact.
-Option 2: Run Docker image that pulls Production model from MLflow.
+
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  --tag ghcr.io/sugan2saba/ml:latest \
+  --file docker/Dockerfile \
+  --push \
+  .
+
+
+
+# from repo root on your Mac
+
+docker pull ghcr.io/sugan2saba/ml:latest
+docker run --rm -p 8000:8000 -e DJANGO_SECRET_KEY=dev -e DEBUG=1 ghcr.io/sugan2saba/ml:latest
+#done
+#### to run the repo from windows: 
+
+ #start the docker application
+ docker version
+ docker compose version
+ 
+ git clone 
+ 
+ cd mltest
+ 
+ docker pull ghcr.io/mlflow/mlflow:latest
+ docker pull ghcr.io/sugan2saba/ml:latest
+ 
+ docker compose up -d
+ start http://localhost:5000
+ start http://127.0.0.1:8000/health
+ #verify mlflow by running http://localhost:5000 & http://127.0.0.1:8000/health in browser 
+ 
+ #in power shell run the following commands to run some training model
+ 
+ python -m venv .venv
+ .\.venv\Scripts\Activate.ps1
+ pip install --upgrade pip
+ pip install mlflow scikit-learn
+ $env:MLFLOW_TRACKING_URI="http://localhost:5000"
+ python .\train_register.py
+ deactivate
+ 
+ #the training model Promoted HGB latest version should be staged to Production
+ 
+ docker compose restart api
+ docker compose logs -f api
+ 
+ 
+ start http://127.0.0.1:8000/health
+ start http://127.0.0.1:8000/static/rest_framework/css/default.css
+ 
+ #to clean everything
+ 
+ docker compose down --remove-orphans
+ docker volume ls
+ docker volume rm mltest_mlflow_db mltest_mlflow_artifacts
+ docker network prune -f
+
+#### end windows run
+
 See README.md for exact Docker run commands.
+
+
 6. Monitoring
+drift report, this has to be a GitHub workflow setup , runs on certain time and generate the report, Interpreting Drift Reports (Evidently) A nightly GitHub Actions job runs scripts/monitor_evidently.py over logs/predictions.csv and uploads: evidently_report.html (visual dashboard) evidently_report.json (machine-parsed) Where to view GitHub → your repo → Actions → Evidently Drift Monitoring → select a run Download Artifacts → evidently-report → open the HTML locally do I have to run anything manually to prepare logs/predictions.csv 
+
+for testing purpose I have gerenarted logs/predictions.csv using script scripts/create_prediction.py
+
+
+# Overwrite the file with 200 rows
+python scripts/create_prediction.py --n-rows 200 --mode overwrite
+
+# Append 60 rows stamped as "now" to a custom path
+python scripts/create_prediction.py --n-rows 60 --out logs/predictions.csv --mode append
+
+# (Optional) Generate "reference" rows 7 days ago (if your monitor uses time splits)
+python scripts/create_prediction.py --n-rows 150 --mode overwrite --days-ago 7
+
 Run drift detection:
+python -m scripts.monitor_evidently --log-csv logs/predictions.csv --out-dir reports/monitoring --reference-is-recent
+
 python -m scripts.monitor_evidently --reference-is-recent
 HTML report in reports/monitoring/evidently_report.html.
 
 ---
 
-# 3. `docs/OPS_PLAYBOOK.md` (for operations / DevOps)
+9.Airflow
+Ensure Airflow is running:
+
+git close 
+cd orchestration/airflow
+docker compose up -d
+Open http://localhost:8080 (airflow/airflow).
+In the Airflow UI, run the DAG train_and_hpo.
+orchestration/airflow/dags/train_and_hpo.py
+Tasks:
+prepare_data → ray_tune_hpo → train_best_and_register
+Output:
+Trials & final model logged to MLflow
+Model registered as a new version (e.g., v5) of MediWatchReadmit
+Promote the new version to Staging or Production (Section 1).
+Airflow UI (host): http://127.0.0.1:8080
+
+8. `docs/OPS_PLAYBOOK.md` (for operations / DevOps)
 
 This is for *operators / maintainers* — how to promote, roll back, and interpret monitoring.
 

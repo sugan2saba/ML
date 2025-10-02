@@ -7,7 +7,7 @@
 ### Prerequisites
 - Python 3.10+
 - pip / venv
-- Docker (optional, for API)
+- Docker 
 
 ### Setup
 ```bash
@@ -23,18 +23,25 @@ mkdir -p data/raw
 
 - Place under `data/raw/diabetic_data.csv`
 
-## 2. Preprocessing
+## 2. Preprocessing also notebooks/01_eda.ipynb has some anasysis 
 ```bash
 python -m scripts.make_splits
-# Creates data/processed/{train,valid,test}.csv
+# Creates data/processed/{train,valid,test}parquet files 
 
-# Train & Register
+# Train for local run 
 python -m scripts.train_mlflow --model rf
 python -m scripts.promote_model --name MediWatchReadmit --stage Production
+
+#Train and Register to MLFLOW
+python -m scripts.train_baseline_mlflow --model rf --register 
+python -m scripts.train_baseline_mlflow --model lr --max-iter 2000 --C 0.5 --register 
+python -m scripts.train_mlflow  --register --model-name HBO
+python -m scripts.train_mlflow --experiment MediWatch-Readmit --run-name hgb_v1 --register-name MediWatchReadmit
+
 #Run API (Docker Option 1 – baked model)
 docker run --rm -p 8000:8000 \
   -e DJANGO_SECRET_KEY=dev -e DEBUG=1 \
-  ghcr.io/<you>/ml:withmodel
+  ghcr.io/sugan2saba/ml:latest
 # Run API (Docker Option 2 – MLflow model)
 docker run --rm -p 8000:8000 \
   -e DJANGO_SECRET_KEY=dev -e DEBUG=1 \
@@ -42,7 +49,7 @@ docker run --rm -p 8000:8000 \
   -e MLFLOW_TRACKING_URI=http://host.docker.internal:5000 \
   -e MLFLOW_MODEL_NAME=MediWatchReadmit \
   -e MLFLOW_MODEL_STAGE=Production \
-  ghcr.io/<you>/ml:latest
+  ghcr.io/sugan2saba/ml:latest
 ### Test
 curl -s http://127.0.0.1:8000/health
 curl -s http://127.0.0.1:8000/schema
