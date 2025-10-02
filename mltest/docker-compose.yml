@@ -1,0 +1,41 @@
+version: "3.9"
+
+services:
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest   
+    command: >
+      mlflow server
+      --backend-store-uri sqlite:////mlflow_db/mlflow.db
+      --default-artifact-root file:///mlartifacts
+      --host 0.0.0.0 --port 5000
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_db:/mlflow_db
+      - mlflow_artifacts:/mlartifacts
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5000"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    image: ghcr.io/sugan2saba/ml:latest   # app image
+    depends_on:
+      - mlflow
+    environment:
+      DJANGO_SECRET_KEY: dev
+      DEBUG: "0"
+      # Either provide MODEL_URI or MODEL_NAME+MODEL_STAGE (depends on how your app loads the model)
+      MODEL_URI: models:/HGB/Production
+      # MODEL_NAME: HGB
+      # MODEL_STAGE: Production
+      MLFLOW_TRACKING_URI: http://host.docker.internal:5000
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+volumes:
+  mlflow_db:
+  mlflow_artifacts:

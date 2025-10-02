@@ -1,0 +1,126 @@
+# /Users/suganthi/orchestration/airflow/docker-compose.yml
+# Compose v2 style (no top-level "version" key)
+
+x-airflow-image: &airflow_image apache/airflow:2.9.2-python3.10
+
+services:
+  # ---------- MLflow server ----------
+  mlflow:
+    image: python:3.10-slim
+    container_name: mlflow
+    working_dir: /srv
+    environment:
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+    command: >
+      bash -lc "
+        pip install --no-cache-dir mlflow==2.13.* &&
+        mkdir -p /srv/mlflow/db /srv/mlflow/artifacts &&
+        mlflow server
+          --backend-store-uri sqlite:////srv/mlflow/db/mlflow.db
+          --artifacts-destination /srv/mlflow/artifacts
+          --host 0.0.0.0 --port 5000
+      "
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlflow/db:/srv/mlflow/db
+      - ./mlflow/artifacts:/srv/mlflow/artifacts
+    restart: unless-stopped
+
+  # ---------- Airflow init ----------
+  airflow-init:
+    image: *airflow_image
+    user: "50000:0"
+    depends_on:
+      - mlflow
+    environment:
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/db/airflow.db
+      # Keep only what we need for Step 2 (no Evidently to avoid requests conflicts)
+      _PIP_ADDITIONAL_REQUIREMENTS: >
+        pandas numpy pyarrow scikit-learn
+        mlflow==2.13.* ray[tune]==2.9.3 python-dotenv
+      # Let DAGs import your repo mounted at /workspace
+      PYTHONPATH: /workspace
+      # Inside the Docker network, Airflow talks to MLflow at this URL
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_MODEL_NAME: MediWatchReadmit
+      MLFLOW_EXPERIMENT: MediWatch-Readmit
+    command:
+      - bash
+      - -lc
+      - >
+        mkdir -p /opt/airflow/db &&
+        chmod -R 777 /opt/airflow/db &&
+        airflow db migrate &&
+        airflow users create --username airflow --password airflow
+        --firstname a --lastname d --role Admin --email a@d.com || true
+    volumes:
+      - ./db:/opt/airflow/db
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ${PROJECT_ROOT:-..}:/workspace:rw
+
+  # ---------- Airflow scheduler ----------
+  scheduler:
+    image: *airflow_image
+    user: "50000:0"
+    depends_on:
+      - airflow-init
+      - mlflow
+    restart: unless-stopped
+    environment:
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/db/airflow.db
+      _PIP_ADDITIONAL_REQUIREMENTS: >
+        pandas numpy pyarrow scikit-learn
+        mlflow==2.13.* ray[tune]==2.9.3 python-dotenv
+      PYTHONPATH: /workspace
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_MODEL_NAME: MediWatchReadmit
+      MLFLOW_EXPERIMENT: MediWatch-Readmit
+    command: scheduler
+    volumes:
+      - ./db:/opt/airflow/db
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ${PROJECT_ROOT:-..}:/workspace:rw
+
+  # ---------- Airflow webserver ----------
+  webserver:
+    image: *airflow_image
+    user: "50000:0"
+    depends_on:
+      - airflow-init
+      - scheduler
+      - mlflow
+    restart: unless-stopped
+    environment:
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/db/airflow.db
+      _PIP_ADDITIONAL_REQUIREMENTS: >
+        pandas numpy pyarrow scikit-learn
+        mlflow==2.13.* ray[tune]==2.9.3 python-dotenv
+      PYTHONPATH: /workspace
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_MODEL_NAME: MediWatchReadmit
+      MLFLOW_EXPERIMENT: MediWatch-Readmit
+    command: webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - ./db:/opt/airflow/db
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ${PROJECT_ROOT:-..}:/workspace:rw
